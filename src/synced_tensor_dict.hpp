@@ -14,7 +14,8 @@ namespace std {
 namespace cyy::pytorch {
   class synced_tensor_dict final {
   public:
-    synced_tensor_dict() = default;
+    using data_iterator_type=decltype(data)::iterator;
+    explicit synced_tensor_dict(const std::string &storage_dir_);
 
     void set(const py::object &key, const torch::Tensor &value);
     torch::Tensor get(const py::object &key) const;
@@ -36,6 +37,7 @@ namespace cyy::pytorch {
     };
 
   private:
+    std::filesystem::path storage_dir;
     std::list<std::pair<py::object, torch::Tensor>> data;
     std::unordered_map<py::object,
                        std::tuple<data_state, decltype(data::iterator)>>
