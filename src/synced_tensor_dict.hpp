@@ -1,6 +1,7 @@
+#include <filesystem>
 #include <torch/extension.h>
+#include <tuple>
 #include <unordered_map>
-/* #include "data_status.hpp" */
 
 #include "lib/runnable.hpp"
 
@@ -20,12 +21,31 @@ namespace cyy::pytorch {
     void remove(const py::object &key);
 
   private:
-    std::unordered_map<py::object, torch::Tensor> data;
+    void set_in_disk(const py::object &key);
+    void update_access_order(decltype(data::iterator) it);
+
+  private:
+    enum class data_state {
+      IN_MEMORY,
+      IN_MEMORY_NEW_DATA,
+      IN_DISK,
+      PRE_SAVING,
+      SAVING,
+      PRE_LOAD,
+      LOADING,
+    };
+
+  private:
+    std::list<std::pair<py::object, torch::Tensor>> data;
+    std::unordered_map<py::object,
+                       std::tuple<data_state, decltype(data::iterator)>>
+        data_info;
   };
 } // namespace cyy::pytorch
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  py::class_<cyy::pytorch::synced_tensor_dict>(m, "SyncedTensorDict")
+  auto sub_m = m.def_submodule("data_structure", "Contains data structures");
+  py::class_<cyy::pytorch::synced_tensor_dict>(sub_m, "SyncedTensorDict")
       .def(py::init<>())
       .def("__setitem__", &cyy::pytorch::synced_tensor_dict::set)
       .def("__getitem__", &cyy::pytorch::synced_tensor_dict::get)
