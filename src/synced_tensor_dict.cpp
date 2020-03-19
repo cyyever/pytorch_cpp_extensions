@@ -20,18 +20,19 @@ namespace cyy::pytorch {
       }
     }
     save_request_queue.wake_up_on_new_elements = false;
-    save_response_queue.wake_up_on_new_elements = false;
     for (size_t i = 0; i < save_thread_num; i++) {
-      save_threads.emplace_back(save_request_queue, save_response_queue);
+      save_threads.emplace_back(*this);
     }
     for (auto &t : save_threads) {
       t.start();
     }
-    save_response_threads.emplace_back(*this);
-    for (auto &t : save_response_threads) {
+    fetch_request_queue.wake_up_on_new_elements = false;
+    for (size_t i = 0; i < fetch_thread_num; i++) {
+      fetch_threads.emplace_back(*this);
+    }
+    for (auto &t : fetch_threads) {
       t.start();
     }
-    fetch_request_queue.wake_up_on_new_elements = false;
   }
 
   synced_tensor_dict::~synced_tensor_dict() { release(); }
@@ -40,13 +41,13 @@ namespace cyy::pytorch {
     if (permanent) {
       flush_all();
     }
+    for (auto &t : fetch_threads) {
+      t.stop();
+    }
     for (size_t i = 0; i < save_thread_num; i++) {
       save_request_queue.emplace_back();
     }
     for (auto &t : save_threads) {
-      t.stop();
-    }
-    for (auto &t : save_response_threads) {
       t.stop();
     }
     data.clear();
@@ -59,8 +60,8 @@ namespace cyy::pytorch {
   }
 
   torch::Tensor synced_tensor_dict::get(const py::object &key) {
-    {
-      std::lock_guard lk(data_mutex);
+    while (true) {
+      std::unique_lock lk(data_mutex);
       auto it = data_info.find(key);
       if (it == data_info.end()) {
         throw py::key_error(py::str(key));
@@ -72,8 +73,20 @@ namespace cyy::pytorch {
         }
         return *it2;
       }
+      if (it->second == data_state::LOAD_FAILED) {
+        LOG_ERROR("torch::load {} failed",
+                  static_cast<std::string>(py::str(key)));
+        throw py::key_error(py::str(key));
+      }
+      it->second = data_state::PRE_LOAD;
+      lk.unlock();
+      fetch_request_queue.emplace_back(
+          fetch_task{key, get_tensor_file_path(key)});
+      fetch_request_queue.wake_up_all_consumers();
+      lk.lock();
+      new_data_cv.wait(lk);
     }
-    prefetch(key);
+    throw std::runtime_error("should not be here");
   }
   void synced_tensor_dict::emplace(const py::object &key,
                                    const torch::Tensor &value) {
@@ -131,17 +144,29 @@ namespace cyy::pytorch {
   }
 
   void synced_tensor_dict::prefetch(const std::vector<py::object> &keys) {
+    bool flag = false;
     for (const auto &key : keys) {
+      {
+        std::lock_guard lk(data_mutex);
+        auto it = data_info.find(key);
+        if (it == data_info.end()) {
+          LOG_WARN("skip prefetching {}",
+                   static_cast<std::string>(py::str(key)));
+          continue;
+        }
+        if (it->second == data_state::IN_MEMORY ||
+            it->second == data_state::IN_MEMORY_NEW_DATA) {
+          continue;
+        }
+        it->second = data_state::PRE_LOAD;
+      }
       fetch_request_queue.emplace_back(
           fetch_task{key, get_tensor_file_path(key)});
+      flag = true;
     }
-    fetch_request_queue.wake_up_all_consumers();
-  }
-
-  void synced_tensor_dict::prefetch(const py::object &key) {
-    fetch_request_queue.emplace_back(
-        fetch_task{key, get_tensor_file_path(key)});
-    fetch_request_queue.wake_up_all_consumers();
+    if (flag) {
+      fetch_request_queue.wake_up_all_consumers();
+    }
   }
 
   bool synced_tensor_dict::change_state(const py::object &key,
