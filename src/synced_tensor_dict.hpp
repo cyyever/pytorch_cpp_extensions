@@ -45,19 +45,10 @@ namespace cyy::pytorch {
       PRE_LOAD,
       LOADING,
     };
-    using save_task =
-        std::tuple<py::object, torch::Tensor, std::filesystem::path>;
-    using save_request_queue_type = cyy::cxx_lib::thread_safe_linear_container<
-        std::list<std::optional<save_task>>>;
-    using save_result = std::pair<py::object, std::optional<torch::Tensor>>;
-    using save_response_queue_type =
-        cyy::cxx_lib::thread_safe_linear_container<std::list<save_result>>;
-    using fetch_task = std::pair<py::object, std::filesystem::path>;
-    using fetch_request_queue_type = cyy::cxx_lib::thread_safe_linear_container<
-        std::list<std::optional<fetch_task>>>;
-
     class save_thread;
     class save_response_thread;
+    class fetch_thread;
+    class fetch_response_thread;
 
   private:
     bool change_state(const py::object &key, data_state old_state,
@@ -71,12 +62,32 @@ namespace cyy::pytorch {
     std::filesystem::path storage_dir;
     cyy::cxx_lib::ordered_dict<py::object, torch::Tensor> data;
     std::unordered_map<py::object, data_state> data_info;
+
+    using save_task =
+        std::tuple<py::object, torch::Tensor, std::filesystem::path>;
+    using save_request_queue_type = cyy::cxx_lib::thread_safe_linear_container<
+        std::list<std::optional<save_task>>>;
+    using save_result = std::pair<py::object, std::optional<torch::Tensor>>;
+    using save_response_queue_type =
+        cyy::cxx_lib::thread_safe_linear_container<std::list<save_result>>;
     save_request_queue_type save_request_queue;
     save_response_queue_type save_response_queue;
     size_t save_thread_num{1};
     std::list<save_thread> save_threads;
     std::list<save_response_thread> save_response_threads;
+
+    using fetch_task = std::pair<py::object, std::filesystem::path>;
+    using fetch_request_queue_type = cyy::cxx_lib::thread_safe_linear_container<
+        std::list<fetch_task>>;
+    using fetch_result = std::pair<py::object, std::optional<torch::Tensor>>;
+    using fetch_response_queue_type =
+        cyy::cxx_lib::thread_safe_linear_container<std::list<fetch_result>>;
     fetch_request_queue_type fetch_request_queue;
+    fetch_response_queue_type fetch_response_queue;
+    size_t fetch_thread_num{1};
+    std::list<fetch_thread> fetch_threads;
+    std::list<fetch_response_thread> fetch_response_threads;
+
     size_t in_memory_number{128};
     bool permanent{false};
   };
