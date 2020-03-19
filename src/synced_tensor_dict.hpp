@@ -41,7 +41,6 @@ namespace cyy::pytorch {
       IN_MEMORY,
       IN_MEMORY_NEW_DATA,
       IN_DISK,
-      PRE_SAVING,
       SAVING,
       PRE_LOAD,
       LOADING,
@@ -57,62 +56,8 @@ namespace cyy::pytorch {
     using fetch_request_queue_type = cyy::cxx_lib::thread_safe_linear_container<
         std::list<std::optional<fetch_task>>>;
 
-    class save_thread final : public cyy::cxx_lib::runnable {
-    public:
-      save_thread(save_request_queue_type &save_request_queue_,
-                  save_response_queue_type &save_response_queue_)
-          : save_request_queue(save_request_queue_),
-            save_response_queue(save_response_queue_) {}
-      ~save_thread() override { stop(); }
-
-    private:
-      void run() override {
-        while (true) {
-          auto value_opt =
-              save_request_queue.pop_front(std::chrono::seconds(1));
-          if (!value_opt.has_value()) {
-            continue;
-          }
-          if (!(*value_opt).has_value()) {
-            return;
-          }
-          auto const &[key, value, path] = value_opt.value().value();
-          try {
-            torch::save(value, path.string());
-            save_response_queue.emplace_back(key,
-                                             std::optional<torch::Tensor>{});
-          } catch (const std::exception &e) {
-            LOG_ERROR("torch::save failed:{}", e.what());
-            save_response_queue.emplace_back(key, std::move(value));
-          }
-        }
-      }
-
-    private:
-      save_request_queue_type &save_request_queue;
-      save_response_queue_type &save_response_queue;
-    };
-
-    class save_response_thread final : public cyy::cxx_lib::runnable {
-    public:
-      save_response_thread(synced_tensor_dict &dict_) : dict(dict_) {}
-      ~save_response_thread() override { stop(); }
-
-    private:
-      void run() override {
-        while (!needs_stop()) {
-          auto value_opt =
-              dict.save_response_queue.pop_front(std::chrono::seconds(1));
-          if (!value_opt.has_value()) {
-            continue;
-          }
-          auto const &[key, value] = value_opt.value();
-        }
-      }
-
-    private:
-      synced_tensor_dict &dict;
-    };
+    class save_thread;
+    class save_response_thread;
 
   private:
     bool change_state(const py::object &key, data_state old_state,
@@ -138,17 +83,17 @@ namespace cyy::pytorch {
 } // namespace cyy::pytorch
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  using synced_tensor_dict = cyy::pytorch::synced_tensor_dict;
   auto sub_m = m.def_submodule("data_structure", "Contains data structures");
-  py::class_<cyy::pytorch::synced_tensor_dict>(sub_m, "SyncedTensorDict")
+  py::class_<synced_tensor_dict>(sub_m, "SyncedTensorDict")
       .def(py::init<const std::string &>(), py::arg("storage_dir") = "")
-      .def("prefetch", (void (cyy::pytorch::synced_tensor_dict::*)(
-                           const std::vector<py::object> &keys)) &
-                           cyy::pytorch::synced_tensor_dict::prefetch)
-      .def("__setitem__", &cyy::pytorch::synced_tensor_dict::emplace)
-      .def("__getitem__", &cyy::pytorch::synced_tensor_dict::get)
-      .def("__delitem__", &cyy::pytorch::synced_tensor_dict::erase)
-      .def("release", &cyy::pytorch::synced_tensor_dict::release)
-      .def("flush_all", &cyy::pytorch::synced_tensor_dict::flush_all)
-      .def("flush", &cyy::pytorch::synced_tensor_dict::flush,
-           py::arg("try_flush") = false);
+      .def("prefetch",
+           (void (synced_tensor_dict::*)(const std::vector<py::object> &keys)) &
+               synced_tensor_dict::prefetch)
+      .def("__setitem__", &synced_tensor_dict::emplace)
+      .def("__getitem__", &synced_tensor_dict::get)
+      .def("__delitem__", &synced_tensor_dict::erase)
+      .def("release", &synced_tensor_dict::release)
+      .def("flush_all", &synced_tensor_dict::flush_all)
+      .def("flush", &synced_tensor_dict::flush, py::arg("try_flush") = false);
 }
