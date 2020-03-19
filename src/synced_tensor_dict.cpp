@@ -1,5 +1,7 @@
-#include "synced_tensor_dict.hpp"
+#include <cyy/cpp_lib/log/log.hpp>
+#include <stdexcept>
 
+#include "synced_tensor_dict.hpp"
 namespace cyy::pytorch {
   synced_tensor_dict::synced_tensor_dict(const std::string &storage_dir_)
       : storage_dir(storage_dir_) {
@@ -11,55 +13,104 @@ namespace cyy::pytorch {
       }
       for (const auto &f : std::filesystem::directory_iterator(storage_dir)) {
         py::str key = f.path().c_str();
-        set_in_disk(key);
+        data_info[key] = data_state::IN_DISK;
       }
+    }
+    for (size_t i = 0; i < save_thread_num; i++) {
+      save_threads.emplace_back(save_request_queue, save_response_queue);
+    }
+    for (auto &save_thread : save_threads) {
+      save_thread.start();
     }
   }
 
-  void synced_tensor_dict::release() {}
+  synced_tensor_dict::~synced_tensor_dict() { release(); }
 
-  torch::Tensor synced_tensor_dict::get(const py::object &key) const {
+  void synced_tensor_dict::release() noexcept {
+    if (permanent) {
+      flush_all();
+    }
+    for (auto &save_thread : save_threads) {
+      save_thread.stop();
+    }
+    data.clear();
+    data_info.clear();
+
+    if (!permanent && !storage_dir.empty()) {
+      LOG_DEBUG("remove {}", storage_dir.string());
+      std::filesystem::remove_all(storage_dir);
+    }
+  }
+
+  torch::Tensor synced_tensor_dict::get(const py::object &key) {
+    std::lock_guard lk(data_mutex);
     auto it = data_info.find(key);
     if (it == data_info.end()) {
       throw py::key_error(py::str(key));
     }
-    auto const &[state, it2] = it->second;
+    auto state = it->second;
     if (state == data_state::IN_MEMORY ||
         state == data_state::IN_MEMORY_NEW_DATA) {
-      return it2->second;
+      auto it2 = data.find(key);
+      if (it2 == data.end()) {
+        throw std::logic_error("unmatched data and data_info");
+      }
+      return *it2;
     }
     // TODO
     throw "unaaa";
   }
-  void synced_tensor_dict::set(const py::object &key,
-                               const torch::Tensor &value) {
-    auto node = data_info.extract(key);
-    if (node.empty()) {
-      auto it = data.emplace(data.end(), key, value);
-      data_info.emplace(key, decltype(data_info)::mapped_type{
-                                 data_state::IN_MEMORY_NEW_DATA, it});
-      return;
-    }
-    auto &[_, it2] = node.mapped();
-    it2->second = value;
-    it2 = update_access_order(it2);
-    data_info.insert(std::move(node));
+  void synced_tensor_dict::emplace(const py::object &key,
+                                   const torch::Tensor &value) {
+    std::lock_guard lk(data_mutex);
+    data.emplace(key, value);
+    data_info[key] = data_state::IN_MEMORY_NEW_DATA;
   }
-  void synced_tensor_dict::remove(const py::object &key) {
-    auto node = data_info.extract(key);
-    if (node.empty()) {
+  void synced_tensor_dict::erase(const py::object &key) {
+    std::lock_guard lk(data_mutex);
+    if (!data.erase(key)) {
       throw py::key_error(py::str(key));
     }
-    auto const &[state, it2] = node.mapped();
-    if (it2 != data.end()) {
-      data.erase(it2);
+    data_info.erase(key);
+  }
+
+  bool synced_tensor_dict::flush(bool try_flush) noexcept {
+    std::unique_lock lk(data_mutex, std::try_to_lock);
+    if (!lk.owns_lock()) {
+      if (try_flush) {
+        return false;
+      }
+      lk.lock();
+    }
+    while (data.size() > in_memory_number) {
+      auto [key, value] = data.pop_front();
+      data_info[key] = data_state::SAVING;
+      save_request_queue.emplace_back(std::move(key), std::move(value));
+    }
+    return true;
+  }
+
+  void synced_tensor_dict::set_storange_dir(const std::string &storage_dir_) {
+    std::lock_guard lk(data_mutex);
+    storage_dir = storage_dir_;
+    if (!std::filesystem::exists(storage_dir)) {
+      std::filesystem::create_directories(storage_dir);
     }
   }
-  synced_tensor_dict::tensor_list_type::iterator
-  synced_tensor_dict::update_access_order(tensor_list_type::iterator it) {
-    auto new_it = data.insert(data.end(), std::move(*it));
-    data.erase(it);
-    return new_it;
+
+  void synced_tensor_dict::flush_all() noexcept {
+    auto old_in_memory_number = in_memory_number;
+    in_memory_number = 0;
+    flush(false);
+    in_memory_number = old_in_memory_number;
+  }
+
+  std::filesystem::path
+  synced_tensor_dict::get_tensor_file(py::object key) const {
+    if (storage_dir.empty()) {
+      throw std::runtime_error("storage_dir is empty");
+    }
+    return storage_dir / std::filesystem::path(py::str(key));
   }
 
   bool synced_tensor_dict::change_state(const py::object &key,
@@ -69,10 +120,11 @@ namespace cyy::pytorch {
     if (it == data_info.end()) {
       return false;
     }
-    if (it->second.first != old_state) {
+    if (it->second != old_state) {
       return false;
     }
-    it->second.first = new_state;
+    it->second = new_state;
     return true;
   }
+
 } // namespace cyy::pytorch

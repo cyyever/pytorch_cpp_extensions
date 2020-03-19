@@ -6,7 +6,10 @@ setup(
     ext_modules=[
         cpp_extension.CppExtension(
             "pytorch_cpp",
-            ["src/synced_tensor_dict.cpp"])],
-    cmdclass={
-        "build_ext": cpp_extension.BuildExtension},
+            ["src/synced_tensor_dict.cpp"],
+            include_dirs=["~/opt/include/cyy"],
+            libraries=["my_cxx_lib_util"],
+        )
+    ],
+    cmdclass={"build_ext": cpp_extension.BuildExtension},
 )
