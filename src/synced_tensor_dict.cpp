@@ -16,22 +16,35 @@ namespace cyy::pytorch {
         data_info[key] = data_state::IN_DISK;
       }
     }
+    save_request_queue.wake_up_on_new_elements = false;
+    save_response_queue.wake_up_on_new_elements = false;
     for (size_t i = 0; i < save_thread_num; i++) {
       save_threads.emplace_back(save_request_queue, save_response_queue);
     }
-    for (auto &save_thread : save_threads) {
-      save_thread.start();
+    for (auto &t : save_threads) {
+      t.start();
     }
+    save_response_threads.emplace_back(*this);
+    for (auto &t : save_response_threads) {
+      t.start();
+    }
+    fetch_request_queue.wake_up_on_new_elements = false;
   }
 
   synced_tensor_dict::~synced_tensor_dict() { release(); }
 
-  void synced_tensor_dict::release() noexcept {
+  void synced_tensor_dict::release() {
     if (permanent) {
       flush_all();
     }
-    for (auto &save_thread : save_threads) {
-      save_thread.stop();
+    for (size_t i = 0; i < save_thread_num; i++) {
+      save_request_queue.emplace_back();
+    }
+    for (auto &t : save_threads) {
+      t.stop();
+    }
+    for (auto &t : save_response_threads) {
+      t.stop();
     }
     data.clear();
     data_info.clear();
@@ -43,22 +56,21 @@ namespace cyy::pytorch {
   }
 
   torch::Tensor synced_tensor_dict::get(const py::object &key) {
-    std::lock_guard lk(data_mutex);
-    auto it = data_info.find(key);
-    if (it == data_info.end()) {
-      throw py::key_error(py::str(key));
-    }
-    auto state = it->second;
-    if (state == data_state::IN_MEMORY ||
-        state == data_state::IN_MEMORY_NEW_DATA) {
-      auto it2 = data.find(key);
-      if (it2 == data.end()) {
-        throw std::logic_error("unmatched data and data_info");
+    {
+      std::lock_guard lk(data_mutex);
+      auto it = data_info.find(key);
+      if (it == data_info.end()) {
+        throw py::key_error(py::str(key));
       }
-      return *it2;
+      auto it2 = data.find(key);
+      if (it2 != data.end()) {
+        if (it->second != data_state::IN_MEMORY_NEW_DATA) {
+          it->second = data_state::IN_MEMORY;
+        }
+        return *it2;
+      }
     }
-    // TODO
-    throw "unaaa";
+    prefetch(key);
   }
   void synced_tensor_dict::emplace(const py::object &key,
                                    const torch::Tensor &value) {
@@ -74,7 +86,7 @@ namespace cyy::pytorch {
     data_info.erase(key);
   }
 
-  bool synced_tensor_dict::flush(bool try_flush) noexcept {
+  bool synced_tensor_dict::flush(bool try_flush) {
     std::unique_lock lk(data_mutex, std::try_to_lock);
     if (!lk.owns_lock()) {
       if (try_flush) {
@@ -85,8 +97,10 @@ namespace cyy::pytorch {
     while (data.size() > in_memory_number) {
       auto [key, value] = data.pop_front();
       data_info[key] = data_state::SAVING;
-      save_request_queue.emplace_back(std::move(key), std::move(value));
+      save_request_queue.emplace_back(
+          save_task{key, std::move(value), get_tensor_file_path(key)});
     }
+    save_request_queue.wake_up_all_consumers();
     return true;
   }
 
@@ -98,7 +112,7 @@ namespace cyy::pytorch {
     }
   }
 
-  void synced_tensor_dict::flush_all() noexcept {
+  void synced_tensor_dict::flush_all() {
     auto old_in_memory_number = in_memory_number;
     in_memory_number = 0;
     flush(false);
@@ -106,11 +120,25 @@ namespace cyy::pytorch {
   }
 
   std::filesystem::path
-  synced_tensor_dict::get_tensor_file(py::object key) const {
+  synced_tensor_dict::get_tensor_file_path(py::object key) const {
     if (storage_dir.empty()) {
       throw std::runtime_error("storage_dir is empty");
     }
     return storage_dir / std::filesystem::path(py::str(key));
+  }
+
+  void synced_tensor_dict::prefetch(const std::vector<py::object> &keys) {
+    for (const auto &key : keys) {
+      fetch_request_queue.emplace_back(
+          fetch_task{key, get_tensor_file_path(key)});
+    }
+    fetch_request_queue.wake_up_all_consumers();
+  }
+
+  void synced_tensor_dict::prefetch(const py::object &key) {
+    fetch_request_queue.emplace_back(
+        fetch_task{key, get_tensor_file_path(key)});
+    fetch_request_queue.wake_up_all_consumers();
   }
 
   bool synced_tensor_dict::change_state(const py::object &key,
