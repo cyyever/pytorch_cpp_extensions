@@ -139,8 +139,8 @@ namespace cyy::pytorch {
     }
   }
 
-  std::list<save_task> synced_tensor_dict::pop_expired_data(bool try_lock,
-                                                            size_t max_number) {
+  std::list<synced_tensor_dict::save_task>
+  synced_tensor_dict::pop_expired_data(bool try_lock, size_t max_number) {
     std::list<save_task> expired_data;
     while (expired_data.size() < max_number) {
       std::unique_lock lk(data_mutex, std::try_to_lock);
@@ -154,10 +154,9 @@ namespace cyy::pytorch {
       if (data.size() <= in_memory_number) {
         break;
       }
-      std::lock_guard lk(data_mutex);
       auto [key, value] = data.pop_front();
       data_info[key] = data_state::SAVING;
-      save_task.emplace_back(
+      expired_data.emplace_back(
           save_task{key, std::move(value), get_tensor_file_path(key)});
     }
     return expired_data;

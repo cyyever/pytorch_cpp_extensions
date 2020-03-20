@@ -1,3 +1,4 @@
+#include <chrono>
 #include "synced_tensor_dict.hpp"
 namespace cyy::pytorch {
 
@@ -11,7 +12,7 @@ namespace cyy::pytorch {
       while (true) {
         auto save_tasks = dict.pop_expired_data(true, 10);
         if (save_tasks.empty()) {
-          if (wait_for_stop(std::seconds(1))) {
+          if (wait_stop(std::chrono::seconds(1))) {
             return;
           }
           continue;

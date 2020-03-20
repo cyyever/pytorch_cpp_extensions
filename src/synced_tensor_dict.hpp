@@ -64,6 +64,8 @@ namespace cyy::pytorch {
     std::filesystem::path get_tensor_file_path(py::object key) const;
 
     void prefetch(const py::object &key);
+    using save_task =
+        std::tuple<py::object, torch::Tensor, std::filesystem::path>;
     std::list<save_task> pop_expired_data(bool try_lock, size_t max_number);
     void flush(const std::list<save_task> &tasks);
 
@@ -73,8 +75,6 @@ namespace cyy::pytorch {
     cyy::cxx_lib::ordered_dict<py::object, torch::Tensor> data;
     std::unordered_map<py::object, data_state> data_info;
 
-    using save_task =
-        std::tuple<py::object, torch::Tensor, std::filesystem::path>;
     using save_request_queue_type = cyy::cxx_lib::thread_safe_linear_container<
         std::list<std::optional<save_task>>>;
     save_request_queue_type save_request_queue;
@@ -113,5 +113,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       .def("__delitem__", &synced_tensor_dict::erase)
       .def("release", &synced_tensor_dict::release)
       .def("flush_all", &synced_tensor_dict::flush_all)
-      .def("flush", &synced_tensor_dict::flush)
+      .def("flush",
+           (void (synced_tensor_dict::*)()) & synced_tensor_dict::flush);
 }

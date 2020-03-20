@@ -24,6 +24,7 @@ namespace cyy::pytorch {
           torch::save(value, path.string());
           std::lock_guard lk(dict.data_mutex);
           dict.change_state(key, data_state::SAVING, data_state::IN_DISK);
+          LOG_INFO("torch::save {} succ", path.string());
         } catch (const std::exception &e) {
           LOG_ERROR("torch::save {} failed:{}", path.string(), e.what());
           std::lock_guard lk(dict.data_mutex);
