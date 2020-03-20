@@ -11,12 +11,16 @@ namespace cyy::pytorch {
 
   private:
     void run() override {
-      while (!needs_stop()) {
-        auto value_opt = dict.fetch_request_queue.pop_front(std::chrono::seconds(1));
+      while (true) {
+        auto value_opt =
+            dict.fetch_request_queue.pop_front(std::chrono::seconds(1));
         if (!value_opt.has_value()) {
           continue;
         }
-        auto const &[key, path] = value_opt.value();
+        if (!(*value_opt).has_value()) {
+          return;
+        }
+        auto const &[key, path] = value_opt.value().value();
         try {
           {
             std::lock_guard lk(dict.data_mutex);

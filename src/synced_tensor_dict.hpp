@@ -32,7 +32,7 @@ namespace cyy::pytorch {
     void set_in_memory_number(size_t in_memory_number_) {
       in_memory_number = in_memory_number_;
     }
-    void set_storange_dir(const std::string &storage_dir_);
+    void set_storage_dir(const std::string &storage_dir_);
 
     void set_permanent_storage() { permanent = true; }
 
@@ -48,7 +48,6 @@ namespace cyy::pytorch {
     };
     class save_thread;
     class fetch_thread;
-    class fetch_response_thread;
 
   private:
     bool change_state(const py::object &key, data_state old_state,
@@ -72,8 +71,8 @@ namespace cyy::pytorch {
     std::list<save_thread> save_threads;
 
     using fetch_task = std::pair<py::object, std::filesystem::path>;
-    using fetch_request_queue_type =
-        cyy::cxx_lib::thread_safe_linear_container<std::list<fetch_task>>;
+    using fetch_request_queue_type = cyy::cxx_lib::thread_safe_linear_container<
+        std::list<std::optional<fetch_task>>>;
     fetch_request_queue_type fetch_request_queue;
     size_t fetch_thread_num{1};
     std::list<fetch_thread> fetch_threads;
@@ -91,6 +90,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       .def("prefetch",
            (void (synced_tensor_dict::*)(const std::vector<py::object> &keys)) &
                synced_tensor_dict::prefetch)
+      .def("set_in_memory_number", &synced_tensor_dict::set_in_memory_number)
+      .def("set_storage_dir", &synced_tensor_dict::set_storage_dir)
+      .def("set_permanent_storage", &synced_tensor_dict::set_permanent_storage)
       .def("__setitem__", &synced_tensor_dict::emplace)
       .def("__getitem__", &synced_tensor_dict::get)
       .def("__delitem__", &synced_tensor_dict::erase)

@@ -1,6 +1,6 @@
+import os
 from setuptools import setup
 from torch.utils import cpp_extension
-import os
 
 setup(
     name="pytorch_cpp",

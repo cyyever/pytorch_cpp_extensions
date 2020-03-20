@@ -38,23 +38,32 @@ namespace cyy::pytorch {
   synced_tensor_dict::~synced_tensor_dict() { release(); }
 
   void synced_tensor_dict::release() {
+    LOG_INFO("begin release");
     if (permanent) {
       flush_all();
     }
+    LOG_INFO("here");
+    for (size_t i = 0; i < fetch_thread_num; i++) {
+      fetch_request_queue.emplace_back();
+    }
+    fetch_request_queue.wake_up_all_consumers();
     for (auto &t : fetch_threads) {
       t.stop();
     }
+    LOG_INFO("here");
     for (size_t i = 0; i < save_thread_num; i++) {
       save_request_queue.emplace_back();
     }
+    save_request_queue.wake_up_all_consumers();
     for (auto &t : save_threads) {
       t.stop();
     }
+    LOG_INFO("here");
     data.clear();
     data_info.clear();
 
     if (!permanent && !storage_dir.empty()) {
-      LOG_DEBUG("remove {}", storage_dir.string());
+      LOG_INFO("remove {}", storage_dir.string());
       std::filesystem::remove_all(storage_dir);
     }
   }
@@ -90,9 +99,12 @@ namespace cyy::pytorch {
   }
   void synced_tensor_dict::emplace(const py::object &key,
                                    const torch::Tensor &value) {
-    std::lock_guard lk(data_mutex);
-    data.emplace(key, value);
-    data_info[key] = data_state::IN_MEMORY_NEW_DATA;
+    {
+      std::lock_guard lk(data_mutex);
+      data.emplace(key, value);
+      data_info[key] = data_state::IN_MEMORY_NEW_DATA;
+    }
+    flush(true);
   }
   void synced_tensor_dict::erase(const py::object &key) {
     std::lock_guard lk(data_mutex);
@@ -110,17 +122,23 @@ namespace cyy::pytorch {
       }
       lk.lock();
     }
+    bool flag = false;
     while (data.size() > in_memory_number) {
       auto [key, value] = data.pop_front();
       data_info[key] = data_state::SAVING;
       save_request_queue.emplace_back(
           save_task{key, std::move(value), get_tensor_file_path(key)});
+      flag = true;
     }
+    if (!flag) {
+      return true;
+    }
+    LOG_INFO("flush");
     save_request_queue.wake_up_all_consumers();
     return true;
   }
 
-  void synced_tensor_dict::set_storange_dir(const std::string &storage_dir_) {
+  void synced_tensor_dict::set_storage_dir(const std::string &storage_dir_) {
     std::lock_guard lk(data_mutex);
     storage_dir = storage_dir_;
     if (!std::filesystem::exists(storage_dir)) {
