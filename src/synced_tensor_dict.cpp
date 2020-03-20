@@ -3,6 +3,7 @@
 
 #include "synced_tensor_dict.hpp"
 #include "synced_tensor_dict_fetch_thread.hpp"
+#include "synced_tensor_dict_flush_thread.hpp"
 #include "synced_tensor_dict_save_thread.hpp"
 namespace cyy::pytorch {
 
@@ -33,6 +34,13 @@ namespace cyy::pytorch {
     for (auto &t : fetch_threads) {
       t.start();
     }
+
+    for (size_t i = 0; i < flush_thread_num; i++) {
+      flush_threads.emplace_back(*this);
+    }
+    for (auto &t : flush_threads) {
+      t.start();
+    }
   }
 
   synced_tensor_dict::~synced_tensor_dict() { release(); }
@@ -56,6 +64,10 @@ namespace cyy::pytorch {
     }
     save_request_queue.wake_up_all_consumers();
     for (auto &t : save_threads) {
+      t.stop();
+    }
+    LOG_INFO("here");
+    for (auto &t : flush_threads) {
       t.stop();
     }
     LOG_INFO("here");
@@ -104,7 +116,7 @@ namespace cyy::pytorch {
       data.emplace(key, value);
       data_info[key] = data_state::IN_MEMORY_NEW_DATA;
     }
-    flush(true);
+    flush();
   }
   void synced_tensor_dict::erase(const py::object &key) {
     std::lock_guard lk(data_mutex);
@@ -114,28 +126,41 @@ namespace cyy::pytorch {
     data_info.erase(key);
   }
 
-  bool synced_tensor_dict::flush(bool try_flush) {
-    std::unique_lock lk(data_mutex, std::try_to_lock);
-    if (!lk.owns_lock()) {
-      if (try_flush) {
-        return false;
-      }
-      lk.lock();
+  void synced_tensor_dict::flush() {
+    auto tasks = pop_expired_data(false, SIZE_MAX);
+    flush(tasks);
+  }
+  void synced_tensor_dict::flush(const std::list<save_task> &tasks) {
+    for (auto &task : tasks) {
+      save_request_queue.emplace_back(std::move(task));
     }
-    bool flag = false;
-    while (data.size() > in_memory_number) {
+    if (!tasks.empty()) {
+      save_request_queue.wake_up_all_consumers();
+    }
+  }
+
+  std::list<save_task> synced_tensor_dict::pop_expired_data(bool try_lock,
+                                                            size_t max_number) {
+    std::list<save_task> expired_data;
+    while (expired_data.size() < max_number) {
+      std::unique_lock lk(data_mutex, std::try_to_lock);
+      if (!lk.owns_lock()) {
+        if (try_lock) {
+          break;
+        }
+        lk.lock();
+      }
+
+      if (data.size() <= in_memory_number) {
+        break;
+      }
+      std::lock_guard lk(data_mutex);
       auto [key, value] = data.pop_front();
       data_info[key] = data_state::SAVING;
-      save_request_queue.emplace_back(
+      save_task.emplace_back(
           save_task{key, std::move(value), get_tensor_file_path(key)});
-      flag = true;
     }
-    if (!flag) {
-      return true;
-    }
-    LOG_INFO("flush");
-    save_request_queue.wake_up_all_consumers();
-    return true;
+    return expired_data;
   }
 
   void synced_tensor_dict::set_storage_dir(const std::string &storage_dir_) {
@@ -147,9 +172,10 @@ namespace cyy::pytorch {
   }
 
   void synced_tensor_dict::flush_all() {
+    std::lock_guard lk(data_mutex);
     auto old_in_memory_number = in_memory_number;
     in_memory_number = 0;
-    flush(false);
+    flush();
     in_memory_number = old_in_memory_number;
   }
 

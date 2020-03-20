@@ -21,15 +21,23 @@ namespace cyy::pytorch {
   class synced_tensor_dict final {
   public:
     explicit synced_tensor_dict(const std::string &storage_dir_);
+
+    synced_tensor_dict(const synced_tensor_dict &) = delete;
+    synced_tensor_dict &operator=(const synced_tensor_dict &) = delete;
+
+    synced_tensor_dict(synced_tensor_dict &&) noexcept = delete;
+    synced_tensor_dict &operator=(synced_tensor_dict &&) noexcept = delete;
+
     ~synced_tensor_dict();
     void release();
     void emplace(const py::object &key, const torch::Tensor &value);
     torch::Tensor get(const py::object &key);
     void erase(const py::object &key);
     void flush_all();
-    bool flush(bool try_flush = false);
+    void flush();
     void prefetch(const std::vector<py::object> &keys);
     void set_in_memory_number(size_t in_memory_number_) {
+      std::lock_guard lk(data_mutex);
       in_memory_number = in_memory_number_;
     }
     void set_storage_dir(const std::string &storage_dir_);
@@ -48,6 +56,7 @@ namespace cyy::pytorch {
     };
     class save_thread;
     class fetch_thread;
+    class flush_thread;
 
   private:
     bool change_state(const py::object &key, data_state old_state,
@@ -55,6 +64,8 @@ namespace cyy::pytorch {
     std::filesystem::path get_tensor_file_path(py::object key) const;
 
     void prefetch(const py::object &key);
+    std::list<save_task> pop_expired_data(bool try_lock, size_t max_number);
+    void flush(const std::list<save_task> &tasks);
 
   private:
     std::recursive_mutex data_mutex;
@@ -76,6 +87,10 @@ namespace cyy::pytorch {
     fetch_request_queue_type fetch_request_queue;
     size_t fetch_thread_num{1};
     std::list<fetch_thread> fetch_threads;
+
+    size_t flush_thread_num{1};
+    std::list<flush_thread> flush_threads;
+
     size_t in_memory_number{128};
     bool permanent{false};
     std::condition_variable_any new_data_cv;
@@ -98,5 +113,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       .def("__delitem__", &synced_tensor_dict::erase)
       .def("release", &synced_tensor_dict::release)
       .def("flush_all", &synced_tensor_dict::flush_all)
-      .def("flush", &synced_tensor_dict::flush, py::arg("try_flush") = false);
+      .def("flush", &synced_tensor_dict::flush)
 }
