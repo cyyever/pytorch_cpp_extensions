@@ -33,6 +33,7 @@ namespace cyy::pytorch {
     void emplace(const py::object &key, const torch::Tensor &value);
     torch::Tensor get(const py::object &key);
     void erase(const py::object &key);
+    bool contains(const py::object &key) const;
     void flush_all();
     void flush();
     void prefetch(const std::vector<py::object> &keys);
@@ -61,7 +62,7 @@ namespace cyy::pytorch {
   private:
     bool change_state(const py::object &key, data_state old_state,
                       data_state new_state);
-    std::filesystem::path get_tensor_file_path(py::object key) const;
+    std::filesystem::path get_tensor_file_path(const py::object & key) const;
 
     std::pair<bool, std::optional<torch::Tensor>>
     prefetch(const py::object &key);
@@ -111,6 +112,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       .def("set_storage_dir", &synced_tensor_dict::set_storage_dir)
       .def("set_permanent_storage", &synced_tensor_dict::set_permanent_storage)
       .def("__setitem__", &synced_tensor_dict::emplace)
+      .def("__contains__", &synced_tensor_dict::contains)
       .def("__getitem__", &synced_tensor_dict::get)
       .def("__delitem__", &synced_tensor_dict::erase)
       .def("release", &synced_tensor_dict::release)

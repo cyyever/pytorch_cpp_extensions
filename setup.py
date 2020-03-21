@@ -3,10 +3,10 @@ from setuptools import setup
 from torch.utils import cpp_extension
 
 setup(
-    name="pytorch_cpp",
+    name="cyy_pytorch_cpp",
     ext_modules=[
         cpp_extension.CppExtension(
-            "pytorch_cpp",
+            "cyy_pytorch_cpp",
             ["src/synced_tensor_dict.cpp"],
             include_dirs=[
                 os.path.join(

@@ -24,6 +24,7 @@ namespace cyy::pytorch {
           torch::save(value, path.string());
           std::lock_guard lk(dict.data_mutex);
           if (dict.change_state(key, data_state::SAVING, data_state::IN_DISK)) {
+            LOG_INFO("pop key {}", static_cast<std::string>(py::str(key)));
             dict.saving_data.erase(key);
           }
         } catch (const std::exception &e) {

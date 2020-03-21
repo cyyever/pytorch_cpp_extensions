@@ -88,7 +88,7 @@ namespace cyy::pytorch {
         throw py::key_error(py::str(key));
       }
       if (value_opt.has_value()) {
-    LOG_INFO("end get");
+        LOG_INFO("end get");
         return value_opt.value();
       }
 
@@ -101,11 +101,11 @@ namespace cyy::pytorch {
                                    const torch::Tensor &value) {
     LOG_INFO("begin emplace");
     {
+      auto real_key = py::reinterpret_borrow<py::object>(key);
       std::lock_guard lk(data_mutex);
-      data.emplace(key, value);
-      data_info[key] = data_state::IN_MEMORY_NEW_DATA;
+      data.emplace(real_key, value);
+      data_info[real_key] = data_state::IN_MEMORY_NEW_DATA;
     }
-    flush();
     LOG_INFO("end emplace");
   }
   void synced_tensor_dict::erase(const py::object &key) {
@@ -114,6 +114,11 @@ namespace cyy::pytorch {
       throw py::key_error(py::str(key));
     }
     data_info.erase(key);
+  }
+  bool synced_tensor_dict::contains(const py::object &key) const {
+    std::lock_guard lk(data_mutex);
+    LOG_INFO("do contains");
+    return data_info.find(key) != data_info.end();
   }
 
   void synced_tensor_dict::flush() {
@@ -141,6 +146,8 @@ namespace cyy::pytorch {
         lk.lock();
       }
 
+      LOG_INFO("max num {} size {} in_memory_number {}", max_number,
+               data.size(), in_memory_number);
       if (data.size() <= in_memory_number) {
         break;
       }
@@ -170,12 +177,13 @@ namespace cyy::pytorch {
   }
 
   std::filesystem::path
-  synced_tensor_dict::get_tensor_file_path(py::object key) const {
+  synced_tensor_dict::get_tensor_file_path(const py::object &key) const {
     std::lock_guard lk(data_mutex);
     if (storage_dir.empty()) {
       throw std::runtime_error("storage_dir is empty");
     }
-    return storage_dir / std::filesystem::path(py::str(key));
+    return storage_dir /
+           std::filesystem::path(static_cast<std::string>(py::str(key)));
   }
 
   std::pair<bool, std::optional<torch::Tensor>>
@@ -206,8 +214,8 @@ namespace cyy::pytorch {
       }
       it->second = data_state::PRE_LOAD;
     }
-    fetch_request_queue.emplace_back(
-        fetch_task{key, get_tensor_file_path(key)});
+    auto file_path = get_tensor_file_path(key);
+    fetch_request_queue.emplace_back(fetch_task{key, file_path});
     fetch_request_queue.wake_up_all_consumers();
     return {true, {}};
   }
