@@ -26,7 +26,6 @@ namespace cyy::pytorch {
           LOG_INFO("end save key {} {}", key, path.string());
           std::lock_guard lk(dict.data_mutex);
           if (dict.change_state(key, data_state::SAVING, data_state::IN_DISK)) {
-            LOG_INFO("pop key {}", key);
             dict.saving_data.erase(key);
             dict.less_data_cv.notify_all();
           }

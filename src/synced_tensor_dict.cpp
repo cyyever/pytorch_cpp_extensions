@@ -46,11 +46,9 @@ namespace cyy::pytorch {
   synced_tensor_dict::~synced_tensor_dict() { release(); }
 
   void synced_tensor_dict::release() {
-    LOG_INFO("begin release");
     if (permanent) {
       flush_all();
     }
-    LOG_INFO("here");
     for (size_t i = 0; i < fetch_thread_num; i++) {
       fetch_request_queue.emplace_back();
     }
@@ -58,7 +56,6 @@ namespace cyy::pytorch {
     for (auto &t : fetch_threads) {
       t.stop();
     }
-    LOG_INFO("here");
     for (size_t i = 0; i < save_thread_num; i++) {
       save_request_queue.emplace_back();
     }
@@ -66,30 +63,26 @@ namespace cyy::pytorch {
     for (auto &t : save_threads) {
       t.stop();
     }
-    LOG_INFO("here");
     flush_cv.notify_all();
     for (auto &t : flush_threads) {
       t.stop();
     }
-    LOG_INFO("here");
     data.clear();
     data_info.clear();
 
     if (!permanent && !storage_dir.empty()) {
-      LOG_INFO("remove {}", storage_dir.string());
+      LOG_WARN("remove {}", storage_dir.string());
       std::filesystem::remove_all(storage_dir);
     }
   }
 
   torch::Tensor synced_tensor_dict::get(const std::string &key) {
-    LOG_INFO("begin get");
     while (true) {
       auto [result, value_opt] = prefetch(key);
       if (!result) {
         throw py::key_error(key);
       }
       if (value_opt.has_value()) {
-        LOG_INFO("end get");
         return value_opt.value();
       }
 
@@ -100,18 +93,16 @@ namespace cyy::pytorch {
   }
   void synced_tensor_dict::emplace(const std::string &key,
                                    const torch::Tensor &value) {
-    LOG_INFO("begin emplace borrow");
     std::unique_lock lk(data_mutex);
     data.emplace(key, value);
     data_info[key] = data_state::IN_MEMORY_NEW_DATA;
     if (data.size() > in_memory_number) {
       flush_cv.notify_all();
-      while (data.size()+saving_data.size() > in_memory_number * 2) {
-        LOG_INFO("wait flush saving_data size is {}",saving_data.size());
+      while (data.size() + saving_data.size() > in_memory_number * 2) {
+        LOG_WARN("wait flush saving_data size is {}", saving_data.size());
         less_data_cv.wait(lk);
       }
     }
-    LOG_INFO("end emplace");
   }
   void synced_tensor_dict::erase(const std::string &key) {
     std::lock_guard lk(data_mutex);
@@ -151,8 +142,6 @@ namespace cyy::pytorch {
         lk.lock();
       }
 
-      LOG_INFO("max num {} size {} in_memory_number {}", max_number,
-               data.size(), in_memory_number);
       if (data.size() <= in_memory_number) {
         break;
       }
@@ -196,7 +185,7 @@ namespace cyy::pytorch {
       std::lock_guard lk(data_mutex);
       auto it = data_info.find(key);
       if (it == data_info.end()) {
-        LOG_WARN("skip prefetching {}", key);
+        LOG_DEBUG("skip prefetching {}", key);
         return {false, {}};
       }
       if (it->second == data_state::SAVING) {

@@ -19,7 +19,6 @@ namespace cyy::pytorch {
           }
           continue;
         }
-        LOG_INFO("flush count {}", save_tasks.size());
         dict.flush(save_tasks);
       }
     }
