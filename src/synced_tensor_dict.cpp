@@ -80,12 +80,13 @@ namespace cyy::pytorch {
     }
   }
 
-  torch::Tensor synced_tensor_dict::get(const py::object &key) {
+  torch::Tensor synced_tensor_dict::get(const py::handle &key) {
     LOG_INFO("begin get");
+    auto real_key = py::reinterpret_borrow<py::object>(key);
     while (true) {
-      auto [result, value_opt] = prefetch(key);
+      auto [result, value_opt] = prefetch(real_key);
       if (!result) {
-        throw py::key_error(py::str(key));
+        throw py::key_error(py::str(real_key));
       }
       if (value_opt.has_value()) {
         LOG_INFO("end get");
@@ -97,28 +98,30 @@ namespace cyy::pytorch {
     }
     throw std::runtime_error("should not be here");
   }
-  void synced_tensor_dict::emplace(const py::object &key,
+  void synced_tensor_dict::emplace(const py::handle &key,
                                    const torch::Tensor &value) {
-    LOG_INFO("begin emplace");
+    LOG_INFO("begin emplace borrow");
+    auto real_key = py::reinterpret_borrow<py::object>(key);
     {
-      auto real_key = py::reinterpret_borrow<py::object>(key);
       std::lock_guard lk(data_mutex);
       data.emplace(real_key, value);
       data_info[real_key] = data_state::IN_MEMORY_NEW_DATA;
     }
     LOG_INFO("end emplace");
   }
-  void synced_tensor_dict::erase(const py::object &key) {
+  void synced_tensor_dict::erase(const py::handle &key) {
+    auto real_key = py::reinterpret_borrow<py::object>(key);
     std::lock_guard lk(data_mutex);
-    if (!data.erase(key)) {
-      throw py::key_error(py::str(key));
+    if (!data.erase(real_key)) {
+      throw py::key_error(py::str(real_key));
     }
-    data_info.erase(key);
+    data_info.erase(real_key);
   }
-  bool synced_tensor_dict::contains(const py::object &key) const {
+  bool synced_tensor_dict::contains(const py::handle &key) const {
+    auto real_key = py::reinterpret_borrow<py::object>(key);
     std::lock_guard lk(data_mutex);
     LOG_INFO("do contains");
-    return data_info.find(key) != data_info.end();
+    return data_info.find(real_key) != data_info.end();
   }
 
   void synced_tensor_dict::flush() {
@@ -182,6 +185,7 @@ namespace cyy::pytorch {
     if (storage_dir.empty()) {
       throw std::runtime_error("storage_dir is empty");
     }
+    LOG_INFO("get key {}", static_cast<std::string>(py::repr(key)));
     return storage_dir /
            std::filesystem::path(static_cast<std::string>(py::str(key)));
   }
@@ -220,9 +224,9 @@ namespace cyy::pytorch {
     return {true, {}};
   }
 
-  void synced_tensor_dict::prefetch(const std::vector<py::object> &keys) {
+  void synced_tensor_dict::prefetch(const std::vector<py::handle> &keys) {
     for (const auto &key : keys) {
-      prefetch(key);
+      prefetch(py::reinterpret_borrow<py::object>(key));
     }
   }
 

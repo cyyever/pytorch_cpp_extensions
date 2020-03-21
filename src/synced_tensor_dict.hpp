@@ -30,13 +30,13 @@ namespace cyy::pytorch {
 
     ~synced_tensor_dict();
     void release();
-    void emplace(const py::object &key, const torch::Tensor &value);
-    torch::Tensor get(const py::object &key);
-    void erase(const py::object &key);
-    bool contains(const py::object &key) const;
+    void emplace(const py::handle &key, const torch::Tensor &value);
+    torch::Tensor get(const py::handle &key);
+    void erase(const py::handle &key);
+    bool contains(const py::handle &key) const;
     void flush_all();
     void flush();
-    void prefetch(const std::vector<py::object> &keys);
+    void prefetch(const std::vector<py::handle> &keys);
     void set_in_memory_number(size_t in_memory_number_) {
       std::lock_guard lk(data_mutex);
       in_memory_number = in_memory_number_;
@@ -106,7 +106,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   py::class_<synced_tensor_dict>(sub_m, "SyncedTensorDict")
       .def(py::init<const std::string &>(), py::arg("storage_dir") = "")
       .def("prefetch",
-           (void (synced_tensor_dict::*)(const std::vector<py::object> &keys)) &
+           (void (synced_tensor_dict::*)(const std::vector<py::handle> &keys)) &
                synced_tensor_dict::prefetch)
       .def("set_in_memory_number", &synced_tensor_dict::set_in_memory_number)
       .def("set_storage_dir", &synced_tensor_dict::set_storage_dir)
