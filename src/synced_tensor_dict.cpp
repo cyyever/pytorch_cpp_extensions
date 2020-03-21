@@ -87,6 +87,7 @@ namespace cyy::pytorch {
       }
 
       std::unique_lock lk(data_mutex);
+      LOG_WARN("wait data");
       new_data_cv.wait(lk);
     }
     throw std::runtime_error("should not be here");

@@ -21,9 +21,7 @@ namespace cyy::pytorch {
         }
         auto &[key, value, path] = value_opt.value().value();
         try {
-          LOG_INFO("begin save key {}", key);
           torch::save(value, path.string());
-          LOG_INFO("end save key {} {}", key, path.string());
           std::lock_guard lk(dict.data_mutex);
           if (dict.change_state(key, data_state::SAVING, data_state::IN_DISK)) {
             dict.saving_data.erase(key);
