@@ -82,29 +82,15 @@ namespace cyy::pytorch {
 
   torch::Tensor synced_tensor_dict::get(const py::object &key) {
     while (true) {
+      auto [result, value_opt] = prefetch(key);
+      if (!result) {
+        throw py::key_error(py::str(key));
+      }
+      if (value_opt.has_value()) {
+        return value_opt.value();
+      }
+
       std::unique_lock lk(data_mutex);
-      auto it = data_info.find(key);
-      if (it == data_info.end()) {
-        throw py::key_error(py::str(key));
-      }
-      auto it2 = data.find(key);
-      if (it2 != data.end()) {
-        if (it->second != data_state::IN_MEMORY_NEW_DATA) {
-          it->second = data_state::IN_MEMORY;
-        }
-        return *it2;
-      }
-      if (it->second == data_state::LOAD_FAILED) {
-        LOG_ERROR("torch::load {} failed",
-                  static_cast<std::string>(py::str(key)));
-        throw py::key_error(py::str(key));
-      }
-      it->second = data_state::PRE_LOAD;
-      lk.unlock();
-      fetch_request_queue.emplace_back(
-          fetch_task{key, get_tensor_file_path(key)});
-      fetch_request_queue.wake_up_all_consumers();
-      lk.lock();
       new_data_cv.wait(lk);
     }
     throw std::runtime_error("should not be here");
@@ -156,6 +142,7 @@ namespace cyy::pytorch {
       }
       auto [key, value] = data.pop_front();
       data_info[key] = data_state::SAVING;
+      saving_data[key] = value;
       expired_data.emplace_back(
           save_task{key, std::move(value), get_tensor_file_path(key)});
     }
@@ -180,35 +167,50 @@ namespace cyy::pytorch {
 
   std::filesystem::path
   synced_tensor_dict::get_tensor_file_path(py::object key) const {
+    std::lock_guard lk(data_mutex);
     if (storage_dir.empty()) {
       throw std::runtime_error("storage_dir is empty");
     }
     return storage_dir / std::filesystem::path(py::str(key));
   }
 
-  void synced_tensor_dict::prefetch(const std::vector<py::object> &keys) {
-    bool flag = false;
-    for (const auto &key : keys) {
-      {
-        std::lock_guard lk(data_mutex);
-        auto it = data_info.find(key);
-        if (it == data_info.end()) {
-          LOG_WARN("skip prefetching {}",
-                   static_cast<std::string>(py::str(key)));
-          continue;
-        }
-        if (it->second == data_state::IN_MEMORY ||
-            it->second == data_state::IN_MEMORY_NEW_DATA) {
-          continue;
-        }
-        it->second = data_state::PRE_LOAD;
+  std::pair<bool, std::optional<torch::Tensor>>
+  synced_tensor_dict::prefetch(const py::object &key) {
+    {
+      std::lock_guard lk(data_mutex);
+      auto it = data_info.find(key);
+      if (it == data_info.end()) {
+        LOG_WARN("skip prefetching {}", static_cast<std::string>(py::str(key)));
+        return {false, {}};
       }
-      fetch_request_queue.emplace_back(
-          fetch_task{key, get_tensor_file_path(key)});
-      flag = true;
+      if (it->second == data_state::SAVING) {
+        auto node = saving_data.extract(key);
+        data.emplace(key, node.mapped());
+        it->second = data_state::IN_MEMORY_NEW_DATA;
+        return {true, std::move(node.mapped())};
+      }
+      if (it->second == data_state::IN_MEMORY ||
+          it->second == data_state::IN_MEMORY_NEW_DATA) {
+        return {true, *data.find(key)};
+      }
+      if (it->second == data_state::LOAD_FAILED) {
+        return {false, {}};
+      }
+
+      if (it->second != data_state::IN_DISK) {
+        return {true, {}};
+      }
+      it->second = data_state::PRE_LOAD;
     }
-    if (flag) {
-      fetch_request_queue.wake_up_all_consumers();
+    fetch_request_queue.emplace_back(
+        fetch_task{key, get_tensor_file_path(key)});
+    fetch_request_queue.wake_up_all_consumers();
+    return {true, {}};
+  }
+
+  void synced_tensor_dict::prefetch(const std::vector<py::object> &keys) {
+    for (const auto &key : keys) {
+      prefetch(key);
     }
   }
 

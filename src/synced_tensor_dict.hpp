@@ -63,16 +63,18 @@ namespace cyy::pytorch {
                       data_state new_state);
     std::filesystem::path get_tensor_file_path(py::object key) const;
 
-    void prefetch(const py::object &key);
+    std::pair<bool, std::optional<torch::Tensor>>
+    prefetch(const py::object &key);
     using save_task =
         std::tuple<py::object, torch::Tensor, std::filesystem::path>;
     std::list<save_task> pop_expired_data(bool try_lock, size_t max_number);
     void flush(const std::list<save_task> &tasks);
 
   private:
-    std::recursive_mutex data_mutex;
+    mutable std::recursive_mutex data_mutex;
     std::filesystem::path storage_dir;
     cyy::cxx_lib::ordered_dict<py::object, torch::Tensor> data;
+    std::unordered_map<py::object, torch::Tensor> saving_data;
     std::unordered_map<py::object, data_state> data_info;
 
     using save_request_queue_type = cyy::cxx_lib::thread_safe_linear_container<
