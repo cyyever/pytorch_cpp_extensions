@@ -21,19 +21,19 @@ namespace cyy::pytorch {
         }
         auto &[key, value, path] = value_opt.value().value();
         try {
+          LOG_INFO("begin save key {}", key);
           torch::save(value, path.string());
+          LOG_INFO("end save key {} {}", key, path.string());
           std::lock_guard lk(dict.data_mutex);
           if (dict.change_state(key, data_state::SAVING, data_state::IN_DISK)) {
-            LOG_INFO("pop key {}", static_cast<std::string>(py::str(key)));
+            LOG_INFO("pop key {}", key);
             dict.saving_data.erase(key);
+            dict.less_data_cv.notify_all();
           }
         } catch (const std::exception &e) {
-          LOG_ERROR("torch::save {} failed:{}", path.string(), e.what());
-          std::lock_guard lk(dict.data_mutex);
-          if (dict.change_state(key, data_state::SAVING,
-                                data_state::IN_MEMORY_NEW_DATA)) {
-            dict.data.emplace(key, std::move(value));
-          }
+          LOG_ERROR("torch::save {} failed,drop it:{}", path.string(),
+                    e.what());
+          dict.erase(key);
         }
       }
     }

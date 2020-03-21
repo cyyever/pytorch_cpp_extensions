@@ -10,12 +10,11 @@ namespace cyy::pytorch {
   private:
     void run() override {
       while (true) {
-        LOG_INFO("flush begin");
-        auto save_tasks = dict.pop_expired_data(true, 10);
-        LOG_INFO("flush end");
+        auto save_tasks = dict.pop_expired_data(false, 1);
         if (save_tasks.empty()) {
-        LOG_INFO("flush sleep");
-          if (wait_stop(std::chrono::milliseconds(1))) {
+          std::unique_lock lk(dict.data_mutex);
+          dict.flush_cv.wait(lk);
+          if (needs_stop()) {
             return;
           }
           continue;
