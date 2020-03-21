@@ -37,6 +37,7 @@ namespace cyy::pytorch {
       in_memory_number = in_memory_number_;
     }
     void set_storage_dir(const std::string &storage_dir_);
+    void set_wait_flush_ratio(float wait_flush_ratio_);
 
     void set_permanent_storage() { permanent = true; }
 
@@ -94,6 +95,7 @@ namespace cyy::pytorch {
     std::condition_variable_any new_data_cv;
     std::condition_variable_any less_data_cv;
     std::condition_variable_any flush_cv;
+    float wait_flush_ratio{1};
   };
 } // namespace cyy::pytorch
 
@@ -108,6 +110,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       .def("set_in_memory_number", &synced_tensor_dict::set_in_memory_number)
       .def("set_storage_dir", &synced_tensor_dict::set_storage_dir)
       .def("set_permanent_storage", &synced_tensor_dict::set_permanent_storage)
+      .def("set_wait_flush_ratio", &synced_tensor_dict::set_wait_flush_ratio)
       .def("__setitem__", &synced_tensor_dict::emplace)
       .def("__contains__", &synced_tensor_dict::contains)
       .def("__getitem__", &synced_tensor_dict::get)

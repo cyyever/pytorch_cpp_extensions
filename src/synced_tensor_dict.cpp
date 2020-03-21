@@ -99,8 +99,10 @@ namespace cyy::pytorch {
     data_info[key] = data_state::IN_MEMORY_NEW_DATA;
     if (data.size() > in_memory_number) {
       flush_cv.notify_all();
-      while (data.size() + saving_data.size() > in_memory_number * 2) {
-        LOG_WARN("wait flush saving_data size is {}", saving_data.size());
+      while (data.size() + saving_data.size() >
+             in_memory_number * wait_flush_ratio) {
+        LOG_WARN("wait flush saving_data size is {} ratio is {}",
+                 saving_data.size(), wait_flush_ratio);
         less_data_cv.wait(lk);
       }
     }
@@ -161,6 +163,11 @@ namespace cyy::pytorch {
     if (!std::filesystem::exists(storage_dir)) {
       std::filesystem::create_directories(storage_dir);
     }
+  }
+
+  void synced_tensor_dict::set_wait_flush_ratio(float wait_flush_ratio_) {
+    std::lock_guard lk(data_mutex);
+    wait_flush_ratio = wait_flush_ratio_;
   }
 
   void synced_tensor_dict::flush_all() {
