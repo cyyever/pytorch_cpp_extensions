@@ -19,6 +19,7 @@ setup(
                     "opt",
                     "lib")],
             libraries=["my_cxx_lib_util"],
+            # extra_compile_args=['-g']
         )],
     cmdclass={
         "build_ext": cpp_extension.BuildExtension},

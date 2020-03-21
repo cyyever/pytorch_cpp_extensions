@@ -81,12 +81,14 @@ namespace cyy::pytorch {
   }
 
   torch::Tensor synced_tensor_dict::get(const py::object &key) {
+    LOG_INFO("begin get");
     while (true) {
       auto [result, value_opt] = prefetch(key);
       if (!result) {
         throw py::key_error(py::str(key));
       }
       if (value_opt.has_value()) {
+    LOG_INFO("end get");
         return value_opt.value();
       }
 
@@ -97,12 +99,14 @@ namespace cyy::pytorch {
   }
   void synced_tensor_dict::emplace(const py::object &key,
                                    const torch::Tensor &value) {
+    LOG_INFO("begin emplace");
     {
       std::lock_guard lk(data_mutex);
       data.emplace(key, value);
       data_info[key] = data_state::IN_MEMORY_NEW_DATA;
     }
     flush();
+    LOG_INFO("end emplace");
   }
   void synced_tensor_dict::erase(const py::object &key) {
     std::lock_guard lk(data_mutex);
