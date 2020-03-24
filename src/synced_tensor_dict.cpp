@@ -119,6 +119,13 @@ namespace cyy::pytorch {
     std::lock_guard lk(data_mutex);
     return data_info.find(key) != data_info.end();
   }
+  void synced_tensor_dict::enable_debug_logging(bool enable) const {
+    if (enable) {
+      cyy::cxx_lib::log::set_level(spdlog::level::level_enum::debug);
+    } else {
+      cyy::cxx_lib::log::set_level(spdlog::level::level_enum::error);
+    }
+  }
 
   void synced_tensor_dict::flush() {
     auto tasks = pop_expired_data(false, SIZE_MAX);

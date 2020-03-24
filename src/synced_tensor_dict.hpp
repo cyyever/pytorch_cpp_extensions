@@ -11,7 +11,6 @@
 #include <cyy/cpp_lib/util/thread_safe_container.hpp>
 #include <torch/extension.h>
 
-
 namespace cyy::pytorch {
   class synced_tensor_dict final {
   public:
@@ -29,6 +28,7 @@ namespace cyy::pytorch {
     torch::Tensor get(const std::string &key);
     void erase(const std::string &key);
     bool contains(const std::string &key) const;
+    void enable_debug_logging(bool enable) const;
     void flush_all();
     void flush();
     void prefetch(const std::vector<std::string> &keys);
@@ -58,7 +58,7 @@ namespace cyy::pytorch {
   private:
     bool change_state(const std::string &key, data_state old_state,
                       data_state new_state);
-    std::filesystem::path get_tensor_file_path(const std::string & key) const;
+    std::filesystem::path get_tensor_file_path(const std::string &key) const;
 
     std::pair<bool, std::optional<torch::Tensor>>
     prefetch(const std::string &key);
@@ -104,13 +104,14 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   auto sub_m = m.def_submodule("data_structure", "Contains data structures");
   py::class_<synced_tensor_dict>(sub_m, "SyncedTensorDict")
       .def(py::init<const std::string &>(), py::arg("storage_dir") = "")
-      .def("prefetch",
-           (void (synced_tensor_dict::*)(const std::vector<std::string> &keys)) &
-               synced_tensor_dict::prefetch)
+      .def("prefetch", (void (synced_tensor_dict::*)(
+                           const std::vector<std::string> &keys)) &
+                           synced_tensor_dict::prefetch)
       .def("set_in_memory_number", &synced_tensor_dict::set_in_memory_number)
       .def("set_storage_dir", &synced_tensor_dict::set_storage_dir)
       .def("set_permanent_storage", &synced_tensor_dict::set_permanent_storage)
       .def("set_wait_flush_ratio", &synced_tensor_dict::set_wait_flush_ratio)
+      .def("enable_debug_logging", &synced_tensor_dict::enable_debug_logging)
       .def("__setitem__", &synced_tensor_dict::emplace)
       .def("__contains__", &synced_tensor_dict::contains)
       .def("__getitem__", &synced_tensor_dict::get)
