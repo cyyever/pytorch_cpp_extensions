@@ -123,7 +123,7 @@ namespace cyy::pytorch {
     if (enable) {
       cyy::cxx_lib::log::set_level(spdlog::level::level_enum::debug);
     } else {
-      cyy::cxx_lib::log::set_level(spdlog::level::level_enum::error);
+      cyy::cxx_lib::log::set_level(spdlog::level::level_enum::err);
     }
   }
 
