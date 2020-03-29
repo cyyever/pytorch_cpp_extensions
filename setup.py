@@ -9,18 +9,14 @@ setup(
             "cyy_pytorch_cpp",
             ["src/synced_tensor_dict.cpp"],
             include_dirs=[
+                os.path.join(os.path.expanduser("~"), "opt", "include"),
                 os.path.join(
-                    os.path.expanduser("~"),
-                    "opt",
-                    "include")],
-            library_dirs=[
-                os.path.join(
-                    os.path.expanduser("~"),
-                    "opt",
-                    "lib")],
-            libraries=["my_cxx_lib_util"],
-            # extra_compile_args=['-g']
-        )],
-    cmdclass={
-        "build_ext": cpp_extension.BuildExtension},
+                    os.path.expanduser("~"), "opt", "include", "cyy", "cpp_lib"
+                ),
+            ],
+            library_dirs=[os.path.join(os.path.expanduser("~"), "opt", "lib")],
+            libraries=["my_cxx_lib_torch"],
+        )
+    ],
+    cmdclass={"build_ext": cpp_extension.BuildExtension},
 )
