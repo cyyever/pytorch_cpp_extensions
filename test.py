@@ -12,5 +12,5 @@ for i in range(100):
 
 tensor_dict.prefetch([str(i) for i in range(100)])
 assert str(0) in tensor_dict
-for i in range(100):
-    assert tensor_dict[str(i)] == torch.Tensor([i])
+for i in tensor_dict.keys():
+    assert tensor_dict[i] == torch.Tensor([int(i)])

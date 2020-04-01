@@ -22,6 +22,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       .def("__contains__", &synced_tensor_dict::contains)
       .def("__getitem__", &synced_tensor_dict::get)
       .def("__delitem__", &synced_tensor_dict::erase)
+      .def("keys", &synced_tensor_dict::keys)
       .def("release", &synced_tensor_dict::release)
       .def("flush_all", &synced_tensor_dict::flush_all)
       .def("flush",
