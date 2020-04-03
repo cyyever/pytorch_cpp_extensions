@@ -10,6 +10,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
                            synced_tensor_dict::prefetch)
       .def("set_in_memory_number", &synced_tensor_dict::set_in_memory_number)
       .def("set_storage_dir", &synced_tensor_dict::set_storage_dir)
+      .def("get_storage_dir", &synced_tensor_dict::get_storage_dir)
       .def("set_permanent_storage", &synced_tensor_dict::enable_permanent_storage)
       .def("enable_permanent_storage", &synced_tensor_dict::enable_permanent_storage)
       .def("disable_permanent_storage", &synced_tensor_dict::disable_permanent_storage)
