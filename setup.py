@@ -16,6 +16,7 @@ setup(
             ],
             library_dirs=[os.path.join(os.path.expanduser("~"), "opt", "lib")],
             libraries=["my_cxx_lib_torch"],
+            extra_compile_args=["-std=c++17"],
         )
     ],
     cmdclass={"build_ext": cpp_extension.BuildExtension},
