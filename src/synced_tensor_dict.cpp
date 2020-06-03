@@ -42,8 +42,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       .def(py::init<torch::Tensor, torch::IntArrayRef, const std::string &>(),
            py::arg("mask"), py::arg("tensor_shape"),
            py::arg("storage_dir") = "")
-      .def("prefetch", (void (synced_tensor_dict::*)(
-                           const std::vector<std::string> &keys)) &
-                           synced_sparse_tensor_dict::prefetch)
+      .def("__getitem__", &synced_sparse_tensor_dict::get)
       .def("__setitem__", &synced_sparse_tensor_dict::emplace);
 }
