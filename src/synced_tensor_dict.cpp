@@ -7,7 +7,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       cyy::cxx_lib::pytorch::synced_sparse_tensor_dict;
   auto sub_m = m.def_submodule("data_structure", "Contains data structures");
   py::class_<synced_tensor_dict>(sub_m, "SyncedTensorDict")
-      .def(py::init<const std::string &>(), py::arg("storage_dir") = "")
+      .def(py::init<const std::string &>())
       .def("prefetch", (void (synced_tensor_dict::*)(
                            const std::vector<std::string> &keys)) &
                            synced_tensor_dict::prefetch)
@@ -39,9 +39,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
            (void (synced_tensor_dict::*)()) & synced_tensor_dict::flush);
   py::class_<synced_sparse_tensor_dict, synced_tensor_dict>(
       sub_m, "SyncedSparseTensorDict")
-      .def(py::init<torch::Tensor, torch::IntArrayRef, const std::string &>(),
-           py::arg("mask"), py::arg("tensor_shape"),
-           py::arg("storage_dir") = "")
+      .def(py::init<torch::Tensor, torch::IntArrayRef, const std::string &>())
       .def("__getitem__", &synced_sparse_tensor_dict::get)
       .def("__setitem__", &synced_sparse_tensor_dict::emplace);
 }
