@@ -32,6 +32,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       .def("__getitem__", &synced_tensor_dict::get)
       .def("__delitem__", &synced_tensor_dict::erase)
       .def("keys", &synced_tensor_dict::keys)
+      .def("in_memory_keys", &synced_tensor_dict::in_memory_keys)
       .def("release", &synced_tensor_dict::release)
       .def("flush_all", &synced_tensor_dict::flush_all,
            "flush all in-memory data to the disk", py::arg("wait") = false)
