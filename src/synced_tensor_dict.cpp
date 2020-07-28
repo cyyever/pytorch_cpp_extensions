@@ -25,7 +25,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
            &synced_tensor_dict::set_saving_thread_number)
       .def("set_fetch_thread_number",
            &synced_tensor_dict::set_fetch_thread_number)
-      .def("enable_debug_logging", &synced_tensor_dict::enable_debug_logging)
+      .def("set_logging", &synced_tensor_dict::set_logging)
       .def("__setitem__", &synced_tensor_dict::emplace)
       .def("__len__", &synced_tensor_dict::size)
       .def("__contains__", &synced_tensor_dict::contains)
