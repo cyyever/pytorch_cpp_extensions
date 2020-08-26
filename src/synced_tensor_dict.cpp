@@ -12,6 +12,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
                            const std::vector<std::string> &keys)) &
                            synced_tensor_dict::prefetch)
       .def("set_in_memory_number", &synced_tensor_dict::set_in_memory_number)
+      .def("get_in_memory_number", &synced_tensor_dict::get_in_memory_number)
       .def("set_storage_dir", &synced_tensor_dict::set_storage_dir)
       .def("get_storage_dir", &synced_tensor_dict::get_storage_dir)
       .def("set_permanent_storage",
