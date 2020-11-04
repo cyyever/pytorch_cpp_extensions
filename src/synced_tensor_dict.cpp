@@ -1,10 +1,10 @@
-#include <cyy/cpp_lib/torch/synced_sparse_tensor_dict.hpp>
-#include <cyy/cpp_lib/torch/synced_tensor_dict.hpp>
+#include <cyy/naive_lib/torch/synced_sparse_tensor_dict.hpp>
+#include <cyy/naive_lib/torch/synced_tensor_dict.hpp>
 #include <torch/extension.h>
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  using synced_tensor_dict = cyy::cxx_lib::pytorch::synced_tensor_dict;
+  using synced_tensor_dict = cyy::naive_lib::pytorch::synced_tensor_dict;
   using synced_sparse_tensor_dict =
-      cyy::cxx_lib::pytorch::synced_sparse_tensor_dict;
+      cyy::naive_lib::pytorch::synced_sparse_tensor_dict;
   auto sub_m = m.def_submodule("data_structure", "Contains data structures");
   py::class_<synced_tensor_dict>(sub_m, "SyncedTensorDict")
       .def(py::init<const std::string &>())
